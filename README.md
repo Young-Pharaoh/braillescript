@@ -164,58 +164,6 @@ Content-Type: application/json
 
 ---
 
-## Instalación y ejecución local
-
-### Requisitos previos
-
-- Python 3.10 o superior.
-- Node.js 18 o superior.
-- npm.
-- Docker, opcional para ejecución con contenedores.
-
----
-
-### 1. Ejecutar el backend
-
-```bash
-cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload
-```
-
-La API estará disponible en:
-
-```text
-http://localhost:8000
-```
-
-Documentación automática de FastAPI:
-
-```text
-http://localhost:8000/docs
-```
-
----
-
-### 2. Ejecutar el frontend
-
-En otra terminal:
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-La aplicación estará disponible en:
-
-```text
-http://localhost:5173
-```
-
-Durante el desarrollo, Vite redirige las peticiones `/api` hacia el backend.
-
----
 
 ## Ejecución con Docker
 
