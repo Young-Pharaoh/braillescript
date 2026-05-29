@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import io
 import math
+from pathlib import Path
 from typing import Sequence
 
 from PIL import Image, ImageDraw, ImageFont
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
 from .encoder import encode_text, cells_to_unicode
@@ -60,6 +63,41 @@ def _try_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
         except (OSError, IOError):
             continue
     return ImageFont.load_default()
+
+
+def _find_unicode_font() -> str | None:
+    """Find a system TrueType font that supports Unicode Braille patterns."""
+    candidates = [
+        # Common Linux fonts
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        # Common Windows fonts
+        "C:/Windows/Fonts/seguisym.ttf",
+        "C:/Windows/Fonts/arialuni.ttf",
+        "C:/Windows/Fonts/DejaVuSans.ttf",
+        # Common macOS fonts
+        "/System/Library/Fonts/Apple Symbols.ttf",
+    ]
+    for path_str in candidates:
+        path = Path(path_str)
+        if path.is_file():
+            return str(path)
+    return None
+
+
+def _register_unicode_pdf_font() -> str:
+    """Register and return a PDF font name for Unicode Braille output."""
+    font_name = "BrailleUnicode"
+    if font_name in pdfmetrics.getRegisteredFontNames():
+        return font_name
+
+    font_path = _find_unicode_font()
+    if font_path is None:
+        return "Courier"
+
+    pdfmetrics.registerFont(TTFont(font_name, font_path))
+    return font_name
 
 
 # ---------------------------------------------------------------------------
@@ -154,57 +192,55 @@ def render_pdf(text: str, show_labels: bool = True) -> bytes:
     page_w, page_h = A4
     c = canvas.Canvas(buf, pagesize=A4)
 
-    # --- Header ---
     margin = 20 * mm
-    y_cursor = page_h - margin
-
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(margin, y_cursor, "BrailleScript – Transcripción Braille")
-    y_cursor -= 10 * mm
-
-    c.setFont("Helvetica", 11)
-    c.drawString(margin, y_cursor, f"Texto original: {text[:120]}{'…' if len(text) > 120 else ''}")
-    y_cursor -= 7 * mm
-
-    c.setFont("Courier", 10)
-    c.drawString(margin, y_cursor, f"Braille Unicode: {unicode_str[:100]}{'…' if len(unicode_str) > 100 else ''}")
-    y_cursor -= 12 * mm
-
-    # --- Braille cells ---
+    y_cursor = 0
     cell_w_pt = CELL_W * 0.75   # scale for PDF points
     cell_h_pt = CELL_H * 0.75
     label_h_pt = LABEL_H * 0.6
     pad_pt = 4
     max_col = int((page_w - 2 * margin) / (cell_w_pt + pad_pt))
+    cell_block_h = cell_h_pt + label_h_pt + pad_pt
 
-    for idx, cell in enumerate(cells):
-        col = idx % max_col
-        row = idx // max_col
+    def draw_header() -> None:
+        nonlocal y_cursor
+        y_cursor = page_h - margin
+        c.setFont("Helvetica-Bold", 16)
+        c.drawString(margin, y_cursor, "BrailleScript – Transcripción Braille")
+        y_cursor -= 10 * mm
 
-        x0 = margin + col * (cell_w_pt + pad_pt)
-        y0 = y_cursor - row * (cell_h_pt + label_h_pt + pad_pt)
+        c.setFont("Helvetica", 11)
+        c.drawString(margin, y_cursor, f"Texto original: {text[:120]}{'…' if len(text) > 120 else ''}")
+        y_cursor -= 7 * mm
 
-        # Check page break
-        if y0 - cell_h_pt - label_h_pt < margin:
+        c.setFont(unicode_font_name, 10)
+        c.drawString(margin, y_cursor, f"Braille Unicode: {unicode_str[:100]}{'…' if len(unicode_str) > 100 else ''}")
+        y_cursor -= 12 * mm
+
+    unicode_font_name = _register_unicode_pdf_font()
+    draw_header()
+    rows_per_page = max(1, int((y_cursor - margin + pad_pt) / cell_block_h))
+    cells_per_page = max_col * rows_per_page
+    page_cell_index = 0
+
+    for cell in cells:
+        if page_cell_index >= cells_per_page:
             c.showPage()
-            y_cursor = page_h - margin
-            # Recalculate row offset for new page
-            remaining = cells[idx:]
-            # We'll just continue; this simple approach handles most texts
-            row = 0
-            y0 = y_cursor
+            draw_header()
+            page_cell_index = 0
 
-        # Cell border
+        col = page_cell_index % max_col
+        row = page_cell_index // max_col
+        x0 = margin + col * (cell_w_pt + pad_pt)
+        y0 = y_cursor - row * cell_block_h
+
         c.setStrokeColorRGB(0.7, 0.7, 0.7)
         c.setLineWidth(0.5)
         c.roundRect(x0, y0 - cell_h_pt, cell_w_pt, cell_h_pt, 3)
 
-        # Dots
         raised = set(cell["dots"])
         scale = 0.75
         for dot_num, (dx, dy) in DOT_POSITIONS.items():
             cx = x0 + dx * scale
-            # PDF y is inverted relative to image coords
             cy = y0 - dy * scale
             r = DOT_RADIUS * scale * 0.8
             if dot_num in raised:
@@ -215,7 +251,6 @@ def render_pdf(text: str, show_labels: bool = True) -> bytes:
                 c.setStrokeColorRGB(0.78, 0.78, 0.78)
                 c.circle(cx, cy, r, fill=0, stroke=1)
 
-        # Label
         if show_labels:
             c.setFillColorRGB(0.3, 0.3, 0.3)
             c.setFont("Helvetica", 7)
@@ -224,6 +259,8 @@ def render_pdf(text: str, show_labels: bool = True) -> bytes:
                 y0 - cell_h_pt - label_h_pt + 2,
                 cell["char"],
             )
+
+        page_cell_index += 1
 
     c.save()
     return buf.getvalue()
