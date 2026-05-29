@@ -56,25 +56,25 @@ BRAILLE_MAP: dict[str, frozenset[int]] = {
     "ü": frozenset({1, 2, 5, 6}),
 
     # Punctuation & signs
-    ".": frozenset({2, 5, 6}),
+    ".": frozenset({3}),
     ",": frozenset({2}),
     ";": frozenset({2, 3}),
     ":": frozenset({2, 5}),
     "!": frozenset({2, 3, 5}),
     "¡": frozenset({2, 3, 5}),
-    "?": frozenset({2, 3, 5, 6}),
-    "¿": frozenset({2, 3, 5, 6}),
+    "?": frozenset({2, 6}),
+    "¿": frozenset({2, 6}),
     "-": frozenset({3, 6}),
-    "(": frozenset({1, 2, 3, 5, 6}),
-    ")": frozenset({2, 3, 4, 5, 6}),
+    "(": frozenset({1, 2, 6}),
+    ")": frozenset({3, 4, 5}),
     "\u201c": frozenset({2, 3, 6}),  # "
     "\u201d": frozenset({3, 5, 6}),  # "
     '"': frozenset({2, 3, 6}),       # straight quote → open
-    "+": frozenset({3, 4, 6}),
-    "×": frozenset({1, 6}),
-    "*": frozenset({1, 6}),          # asterisk → multiply
-    "=": frozenset({2, 3, 4, 6}),
-    "÷": frozenset({3, 4}),
+    "+": frozenset({2, 3, 5}),
+    "×": frozenset({2, 3, 6}),
+    "*": frozenset({2, 3, 6}),          # asterisk → multiply
+    "=": frozenset({2, 3, 5, 6}),
+    "÷": frozenset({2, 5, 6}),
 }
 
 # Prefix signs
