@@ -24,6 +24,7 @@ Asegúrate de tener instalado lo siguiente en tu computadora:
 Clona el repositorio o descarga el ZIP desde GitHub y accede a la carpeta:
 
 ```bash
+git clone https://github.com/Young-Pharaoh/braillescript.git
 cd braillescript
 ```
 
