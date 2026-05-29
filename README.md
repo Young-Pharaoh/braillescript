@@ -165,14 +165,6 @@ Content-Type: application/json
 ---
 
 
-## Ejecución con Docker
-
-También se puede levantar todo el sistema con Docker Compose:
-
-```bash
-docker compose up --build
-```
-
 | Servicio | URL |
 |---|---|
 | Frontend | http://localhost:3000 |
@@ -215,8 +207,4 @@ braillescript.pdf
 
 Este proyecto se distribuye bajo licencia MIT.
 
----
 
-## License
-
-MIT
