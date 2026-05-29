@@ -56,29 +56,29 @@ BRAILLE_MAP: dict[str, frozenset[int]] = {
     "ü": frozenset({1, 2, 5, 6}),
 
     # Punctuation & signs
-    ".": frozenset({2, 5, 6}),
+    ".": frozenset({3}),
     ",": frozenset({2}),
     ";": frozenset({2, 3}),
     ":": frozenset({2, 5}),
     "!": frozenset({2, 3, 5}),
     "¡": frozenset({2, 3, 5}),
-    "?": frozenset({2, 3, 5, 6}),
-    "¿": frozenset({2, 3, 5, 6}),
+    "?": frozenset({2, 6}),
+    "¿": frozenset({2, 6}),
     "-": frozenset({3, 6}),
-    "(": frozenset({1, 2, 3, 5, 6}),
-    ")": frozenset({2, 3, 4, 5, 6}),
+    "(": frozenset({1, 2, 6}),
+    ")": frozenset({3, 4, 5}),
     "\u201c": frozenset({2, 3, 6}),  # "
     "\u201d": frozenset({3, 5, 6}),  # "
     '"': frozenset({2, 3, 6}),       # straight quote → open
-    "+": frozenset({3, 4, 6}),
-    "×": frozenset({1, 6}),
-    "*": frozenset({1, 6}),          # asterisk → multiply
-    "=": frozenset({2, 3, 4, 6}),
-    "÷": frozenset({3, 4}),
+    "+": frozenset({2, 3, 5}),
+    "×": frozenset({2, 3, 6}),
+    "*": frozenset({2, 3, 6}),          # asterisk → multiply
+    "=": frozenset({2, 3, 5, 6}),
+    "÷": frozenset({2, 5, 6}),
 }
 
 # Prefix signs
-UPPERCASE_SIGN = frozenset({6})
+UPPERCASE_SIGN = frozenset({4, 6})
 NUMBER_SIGN = frozenset({3, 4, 5, 6})
 
 # Digits map to the same patterns as a–j
@@ -119,6 +119,33 @@ def dots_to_unicode(dots: frozenset[int] | set[int] | list[int]) -> str:
 # Main encoding function
 # ---------------------------------------------------------------------------
 
+def _extract_words(text: str) -> list[tuple[str, bool]]:
+    """
+    Split text into segments of (content, is_word).
+    A "word" is a run of alphabetic characters (including accented).
+    Everything else is returned as non-word segments.
+    """
+    segments: list[tuple[str, bool]] = []
+    buf = ""
+    for ch in text:
+        is_alpha = ch.isalpha()
+        if is_alpha:
+            buf += ch
+        else:
+            if buf:
+                segments.append((buf, True))
+                buf = ""
+            segments.append((ch, False))
+    if buf:
+        segments.append((buf, True))
+    return segments
+
+
+def _is_all_upper(word: str) -> bool:
+    """Check if a word is entirely uppercase (at least 2 letters)."""
+    return len(word) >= 2 and all(c.isupper() for c in word if c.isalpha())
+
+
 def encode_text(text: str) -> list[dict]:
     """
     Encode a Spanish text string into a list of Braille cell descriptors.
@@ -131,83 +158,104 @@ def encode_text(text: str) -> list[dict]:
     cells: list[dict] = []
     in_number = False  # track whether we're inside a digit run
 
-    for ch in text:
+    segments = _extract_words(text)
 
-        # --- Space ---
-        if ch == " ":
-            cells.append({"char": " ", "dots": [], "type": "space"})
+    for segment, is_word in segments:
+        if is_word:
+            # --- Word segment ---
             in_number = False
-            continue
+            all_upper = _is_all_upper(segment)
 
-        # --- Newline → treat as space ---
-        if ch in ("\n", "\r"):
-            cells.append({"char": " ", "dots": [], "type": "space"})
-            in_number = False
-            continue
+            if all_upper:
+                # Two capital indicators at the start for all-caps words
+                for _ in range(2):
+                    cells.append({
+                        "char": "⠠",
+                        "dots": sorted(UPPERCASE_SIGN),
+                        "type": "prefix",
+                    })
 
-        # --- Digits ---
-        if ch.isdigit():
-            if not in_number:
-                # Insert number sign prefix once per number run
-                cells.append({
-                    "char": "#",
-                    "dots": sorted(NUMBER_SIGN),
-                    "type": "prefix",
-                })
-                in_number = True
-            cells.append({
-                "char": ch,
-                "dots": sorted(DIGIT_MAP[ch]),
-                "type": "digit",
-            })
-            continue
+            for ch in segment:
+                lower = ch.lower()
+                if lower in BRAILLE_MAP:
+                    # Single capital letter (not all-caps word)
+                    if ch.isupper() and not all_upper:
+                        cells.append({
+                            "char": "⠠",
+                            "dots": sorted(UPPERCASE_SIGN),
+                            "type": "prefix",
+                        })
+                    cells.append({
+                        "char": ch,
+                        "dots": sorted(BRAILLE_MAP[lower]),
+                        "type": "letter",
+                    })
+        else:
+            # --- Non-word characters (digits, punctuation, spaces, etc.) ---
+            for ch in segment:
 
-        # --- Decimal comma / point inside number ---
-        if in_number and ch == ",":
-            cells.append({
-                "char": ch,
-                "dots": sorted(DECIMAL_COMMA_DOTS),
-                "type": "sign",
-            })
-            continue
-        if in_number and ch == ".":
-            cells.append({
-                "char": ch,
-                "dots": sorted(DECIMAL_POINT_DOTS),
-                "type": "sign",
-            })
-            continue
+                # --- Space ---
+                if ch == " ":
+                    cells.append({"char": " ", "dots": [], "type": "space"})
+                    in_number = False
+                    continue
 
-        # If we reach here, we're no longer in a number run
-        in_number = False
+                # --- Newline → treat as space ---
+                if ch in ("\n", "\r"):
+                    cells.append({"char": " ", "dots": [], "type": "space"})
+                    in_number = False
+                    continue
 
-        # --- Letters ---
-        lower = ch.lower()
-        if lower in BRAILLE_MAP and (ch.isalpha() or lower in "áéíóúñü"):
-            if ch.isupper():
-                cells.append({
-                    "char": "⠠",
-                    "dots": sorted(UPPERCASE_SIGN),
-                    "type": "prefix",
-                })
-            cells.append({
-                "char": ch,
-                "dots": sorted(BRAILLE_MAP[lower]),
-                "type": "letter",
-            })
-            continue
+                # --- Digits ---
+                if ch.isdigit():
+                    if not in_number:
+                        # Insert number sign prefix at start of digit run
+                        cells.append({
+                            "char": "#",
+                            "dots": sorted(NUMBER_SIGN),
+                            "type": "prefix",
+                        })
+                        in_number = True
+                    cells.append({
+                        "char": ch,
+                        "dots": sorted(DIGIT_MAP[ch]),
+                        "type": "digit",
+                    })
+                    continue
 
-        # --- Punctuation / special ---
-        if ch in BRAILLE_MAP:
-            cells.append({
-                "char": ch,
-                "dots": sorted(BRAILLE_MAP[ch]),
-                "type": "sign",
-            })
-            continue
+                # --- Decimal comma / point inside number ---
+                # After the separator, set in_number = False so that
+                # the number indicator is re-emitted for the next digit group.
+                if in_number and ch == ",":
+                    cells.append({
+                        "char": ch,
+                        "dots": sorted(DECIMAL_COMMA_DOTS),
+                        "type": "sign",
+                    })
+                    in_number = False  # force re-emission of number indicator
+                    continue
+                if in_number and ch == ".":
+                    cells.append({
+                        "char": ch,
+                        "dots": sorted(DECIMAL_POINT_DOTS),
+                        "type": "sign",
+                    })
+                    in_number = False  # force re-emission of number indicator
+                    continue
 
-        # --- Unknown character → skip silently ---
-        # (or could add an empty cell; skipping keeps output clean)
+                # If we reach here, we're no longer in a number run
+                in_number = False
+
+                # --- Punctuation / special ---
+                if ch in BRAILLE_MAP:
+                    cells.append({
+                        "char": ch,
+                        "dots": sorted(BRAILLE_MAP[ch]),
+                        "type": "sign",
+                    })
+                    continue
+
+                # --- Unknown character → skip silently ---
 
     return cells
 
