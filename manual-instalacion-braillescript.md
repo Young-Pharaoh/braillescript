@@ -8,11 +8,11 @@
 
 Asegúrate de tener instalado lo siguiente en tu computadora:
 
-###Instalación manual:
+### Instalación manual:
 - [Python 3.8+](https://www.python.org/downloads/)
 - [Node.js 18+](https://nodejs.org/)
 
-###Instalación automatica (Recomendado):
+### Instalación automatica (Recomendado):
 - [Docker](https://www.docker.com/products/docker-desktop/) — si prefieres no instalar nada manualmente
 
 ---
